@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  FinTrack only ever talks to the single Nextcloud server URL the person
+  enters on the login screen, always over HTTPS (see SessionManager /
+  ApiClient — the server URL is normalized to https:// and Retrofit's base
+  URL is built from it directly). This config doesn't allowlist any
+  particular domain because that server URL is user-supplied at runtime,
+  not known at build time; it only controls trust-anchor behavior for
+  whatever host the person points the app at.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+            <!-- Lets the app work against self-hosted Nextcloud instances using
+                 an internal CA the person has installed as a user certificate,
+                 which is common for self-hosted/home-lab setups. -->
+            <certificates src="user" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>
