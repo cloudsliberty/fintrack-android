@@ -28,7 +28,7 @@ fun MoreScreen(
     onOpenSettings: () -> Unit,
     onOpenAbout: () -> Unit
 ) {
-    Scaffold(topBar = { TopAppBar(title = { Text("More") }) }) { padding ->
+    Scaffold { padding ->
         Column(modifier = Modifier.fillMaxWidth().padding(padding)) {
             MoreItem("Budgets", Icons.Filled.PieChart, onOpenBudgets)
             HorizontalDivider()

@@ -16,7 +16,9 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.ViewList
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -24,6 +26,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.fintrack.android.data.model.ACCOUNT_TYPES
@@ -33,6 +37,8 @@ import com.fintrack.android.ui.common.*
 
 /** Ledger-type groups shown for active accounts, in display order. "Inactive" is appended after these regardless of type. */
 private val ACCOUNT_GROUP_ORDER = listOf("asset" to "Asset", "expense" to "Expenses", "revenue" to "Revenue", "liability" to "Liability")
+
+private enum class AccountViewMode { DETAIL, COMPACT }
 
 @Composable
 fun AccountsScreen(onOpenAccountTransactions: (Account) -> Unit) {
@@ -44,16 +50,21 @@ fun AccountsScreen(onOpenAccountTransactions: (Account) -> Unit) {
     var showAddNew by remember { mutableStateOf(false) }
     var pendingDelete by remember { mutableStateOf<Account?>(null) }
     var searchQuery by remember { mutableStateOf("") }
+    var viewMode by remember { mutableStateOf(AccountViewMode.DETAIL) }
     // Which groups are expanded, keyed by group label. Defaults to expanded the first time a group is seen.
     val expandedGroups = remember { mutableStateMapOf<String, Boolean>() }
 
     Scaffold(
-        topBar = { TopAppBar(title = { Text("Accounts") }) },
         floatingActionButton = {
             FloatingActionButton(onClick = { showAddNew = true }) { Icon(Icons.Filled.Add, contentDescription = "Add account") }
         }
     ) { padding ->
-        Box(modifier = Modifier.padding(padding).fillMaxSize()) {
+        val syncState by com.fintrack.android.data.SyncStatusManager.state.collectAsState()
+        androidx.compose.material3.pulltorefresh.PullToRefreshBox(
+            isRefreshing = syncState is com.fintrack.android.data.SyncState.Refreshing,
+            onRefresh = { viewModel.load() },
+            modifier = Modifier.padding(padding).fillMaxSize()
+        ) {
             when (val s = state) {
                 is UiState.Loading -> LoadingBox()
                 is UiState.Error -> ErrorBox(s.message, onRetry = viewModel::load)
@@ -83,26 +94,44 @@ fun AccountsScreen(onOpenAccountTransactions: (Account) -> Unit) {
                         }
 
                         Column(modifier = Modifier.fillMaxSize()) {
-                            OutlinedTextField(
-                                value = searchQuery,
-                                onValueChange = { searchQuery = it },
-                                label = { Text("Search accounts") },
-                                singleLine = true,
-                                leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
-                                trailingIcon = {
-                                    if (searchQuery.isNotEmpty()) {
-                                        IconButton(onClick = { searchQuery = "" }) {
-                                            Icon(Icons.Filled.Close, contentDescription = "Clear search")
-                                        }
-                                    }
-                                },
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)
-                            )
+                            ) {
+                                OutlinedTextField(
+                                    value = searchQuery,
+                                    onValueChange = { searchQuery = it },
+                                    label = { Text("Search accounts") },
+                                    singleLine = true,
+                                    leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+                                    trailingIcon = {
+                                        if (searchQuery.isNotEmpty()) {
+                                            IconButton(onClick = { searchQuery = "" }) {
+                                                Icon(Icons.Filled.Close, contentDescription = "Clear search")
+                                            }
+                                        }
+                                    },
+                                    modifier = Modifier.weight(1f)
+                                )
+                                Spacer(Modifier.width(4.dp))
+                                IconButton(onClick = { viewMode = AccountViewMode.DETAIL }) {
+                                    Icon(
+                                        Icons.Filled.ViewList, contentDescription = "Detail view",
+                                        tint = if (viewMode == AccountViewMode.DETAIL) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                IconButton(onClick = { viewMode = AccountViewMode.COMPACT }) {
+                                    Icon(
+                                        Icons.Filled.GridView, contentDescription = "Compact tile view",
+                                        tint = if (viewMode == AccountViewMode.COMPACT) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
 
                             if (grouped.isEmpty()) {
                                 EmptyBox("No accounts match \"$searchQuery\".")
                             } else {
-                                LazyColumn(contentPadding = PaddingValues(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                LazyColumn(contentPadding = PaddingValues(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                     grouped.forEach { (groupLabel, group) ->
                                         val isExpanded = expandedGroups[groupLabel] ?: true
                                         item(key = "header-$groupLabel") {
@@ -114,13 +143,19 @@ fun AccountsScreen(onOpenAccountTransactions: (Account) -> Unit) {
                                             )
                                         }
                                         if (isExpanded) {
-                                            items(group, key = { it.id }) { account ->
-                                                AccountRow(
-                                                    account = account,
-                                                    onOpen = { onOpenAccountTransactions(account) },
-                                                    onEdit = { showEditor = account },
-                                                    onDelete = { pendingDelete = account }
-                                                )
+                                            if (viewMode == AccountViewMode.DETAIL) {
+                                                items(group, key = { it.id }) { account ->
+                                                    AccountRow(
+                                                        account = account,
+                                                        onOpen = { onOpenAccountTransactions(account) },
+                                                        onEdit = { showEditor = account },
+                                                        onDelete = { pendingDelete = account }
+                                                    )
+                                                }
+                                            } else {
+                                                items(group.chunked(3), key = { row -> "row-${groupLabel}-" + row.joinToString(",") { it.id.toString() } }) { rowAccounts ->
+                                                    AccountTileRow(rowAccounts, onOpen = onOpenAccountTransactions)
+                                                }
                                             }
                                         }
                                     }
@@ -217,10 +252,13 @@ private fun AccountRow(account: Account, onOpen: () -> Unit, onEdit: () -> Unit,
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
-                modifier = Modifier.size(56.dp).clip(CircleShape).background(color),
+                modifier = Modifier.size(64.dp).clip(CircleShape).background(color),
                 contentAlignment = Alignment.Center
             ) {
-                Text(account.icon.ifBlank { account.name.take(1).uppercase() }, style = MaterialTheme.typography.titleMedium)
+                Text(
+                    account.icon.ifBlank { account.name.take(1).uppercase() },
+                    style = MaterialTheme.typography.titleMedium.copy(fontSize = MaterialTheme.typography.titleMedium.fontSize * 2.5f)
+                )
             }
             Spacer(Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
@@ -237,6 +275,50 @@ private fun AccountRow(account: Account, onOpen: () -> Unit, onEdit: () -> Unit,
             }
             IconButton(onClick = onEdit) { Icon(Icons.Filled.Edit, contentDescription = "Edit") }
             IconButton(onClick = onDelete) { Icon(Icons.Filled.Delete, contentDescription = "Delete") }
+        }
+    }
+}
+
+@Composable
+private fun AccountTileRow(rowAccounts: List<Account>, onOpen: (Account) -> Unit) {
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+        rowAccounts.forEach { account ->
+            Box(modifier = Modifier.weight(1f)) {
+                AccountTile(account = account, onOpen = { onOpen(account) })
+            }
+        }
+        // Pad out the last row so tiles stay a consistent 1/3 width even with 1 or 2 items.
+        repeat(3 - rowAccounts.size) { Spacer(modifier = Modifier.weight(1f)) }
+    }
+}
+
+/** Compact tile: no edit/delete actions — tap opens the account's transactions, same as the detail row. */
+@Composable
+private fun AccountTile(account: Account, onOpen: () -> Unit) {
+    val color = remember(account.color) { parseHexColor(account.color) }
+    ElevatedCard(onClick = onOpen, modifier = Modifier.fillMaxWidth().aspectRatio(0.82f)) {
+        Column(
+            modifier = Modifier.fillMaxSize().padding(8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Box(modifier = Modifier.size(40.dp).clip(CircleShape).background(color), contentAlignment = Alignment.Center) {
+                Text(account.icon.ifBlank { account.name.take(1).uppercase() }, style = MaterialTheme.typography.titleMedium)
+            }
+            Spacer(Modifier.height(6.dp))
+            Text(
+                account.name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold,
+                maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(account.currency, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(
+                account.type.replaceFirstChar { it.uppercase() },
+                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            if (!account.active) {
+                Text("Inactive", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
+            }
         }
     }
 }

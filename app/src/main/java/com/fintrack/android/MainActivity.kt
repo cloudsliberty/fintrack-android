@@ -1,7 +1,6 @@
 package com.fintrack.android
 
 import android.os.Bundle
-import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.fillMaxSize
@@ -15,6 +14,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.fintrack.android.data.security.PinLockManager
@@ -22,7 +22,10 @@ import com.fintrack.android.ui.navigation.FinTrackNavGraph
 import com.fintrack.android.ui.security.PinUnlockScreen
 import com.fintrack.android.ui.theme.FinTrackTheme
 
-class MainActivity : ComponentActivity() {
+// FragmentActivity (not plain ComponentActivity) because androidx.biometric's BiometricPrompt
+// needs a FragmentManager to host its system dialog — it's still fully Compose-compatible,
+// setContent {} works exactly the same.
+class MainActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()

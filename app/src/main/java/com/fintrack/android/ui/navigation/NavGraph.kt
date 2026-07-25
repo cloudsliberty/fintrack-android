@@ -15,12 +15,12 @@ import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavDestination.Companion.hierarchy
-import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -75,7 +75,13 @@ private val bottomTabs = listOf(
 fun FinTrackNavGraph() {
     val context = LocalContext.current
     val navController = rememberNavController()
-    val startDestination = if (SessionManager.isLoggedIn(context)) Routes.TRANSACTIONS else Routes.LOGIN
+    // Computed once per app-launch (not re-derived every recomposition) so NavHost's graph never
+    // churns mid-session. IMPORTANT: this must be the exact same route string the Transactions
+    // composable is registered under (TRANSACTIONS_ROUTE) — passing the plain "transactions" here
+    // while the destination is registered as "transactions?accountId={accountId}" is what caused
+    // graph.startDestinationId to not match any real node, which crashed findStartDestination()
+    // with "Sequence is empty" the moment any bottom-tab navigate() ran.
+    val startDestination = remember { if (SessionManager.isLoggedIn(context)) TRANSACTIONS_ROUTE else Routes.LOGIN }
 
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route?.substringBefore("?")
@@ -91,7 +97,10 @@ fun FinTrackNavGraph() {
                             selected = selected,
                             onClick = {
                                 navController.navigate(tab.route) {
-                                    popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+                                    // Popping back to our own known start route by its literal string
+                                    // (rather than via graph.findStartDestination()) avoids relying on
+                                    // startDestinationId matching a real node at all.
+                                    popUpTo(startDestination) { saveState = true }
                                     launchSingleTop = true
                                     restoreState = true
                                 }

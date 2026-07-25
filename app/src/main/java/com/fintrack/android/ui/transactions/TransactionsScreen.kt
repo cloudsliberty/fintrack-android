@@ -64,12 +64,16 @@ fun TransactionsScreen(initialAccountId: Int? = null) {
     }
 
     Scaffold(
-        topBar = { TopAppBar(title = { Text("Transactions") }) },
         floatingActionButton = {
             FloatingActionButton(onClick = { showAddNew = true }) { Icon(Icons.Filled.Add, contentDescription = "Add transaction") }
         }
     ) { padding ->
-        Box(modifier = Modifier.padding(padding).fillMaxSize()) {
+        val syncState by com.fintrack.android.data.SyncStatusManager.state.collectAsState()
+        androidx.compose.material3.pulltorefresh.PullToRefreshBox(
+            isRefreshing = syncState is com.fintrack.android.data.SyncState.Refreshing,
+            onRefresh = { viewModel.refresh() },
+            modifier = Modifier.padding(padding).fillMaxSize()
+        ) {
             when (val s = state) {
                 is UiState.Loading -> LoadingBox()
                 is UiState.Error -> ErrorBox(s.message, onRetry = viewModel::load)
@@ -83,10 +87,11 @@ fun TransactionsScreen(initialAccountId: Int? = null) {
                             filters = filters,
                             onFiltersChange = viewModel::setFilters
                         )
+                        TransactionSummaryBar(data.transactions)
                         if (data.transactions.isEmpty()) {
                             EmptyBox("No transactions yet. Tap + to add one.")
                         } else {
-                            LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            LazyColumn(contentPadding = PaddingValues(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 items(data.transactions, key = { it.id }) { tx ->
                                     TransactionRow(
                                         tx = tx,
@@ -143,6 +148,38 @@ fun TransactionsScreen(initialAccountId: Int? = null) {
     }
 }
 
+/** Income / Expense / Difference, color-coded green/red/orange. Split per-currency when the filtered set spans more than one, so amounts are never summed across currencies. */
+@Composable
+private fun TransactionSummaryBar(transactions: List<Transaction>) {
+    if (transactions.isEmpty()) return
+    val byCurrency = transactions.groupBy { it.currency }
+    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        byCurrency.forEach { (currency, txs) ->
+            val income = txs.filter { it.type == "income" }.sumOf { it.amount }
+            val expense = txs.filter { it.type == "expense" }.sumOf { it.amount }
+            val diff = income - expense
+            ElevatedCard(modifier = Modifier.fillMaxWidth()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    SummaryStat("Income", formatMoney(income, currency), com.fintrack.android.ui.theme.FtIncome)
+                    SummaryStat("Expense", formatMoney(expense, currency), com.fintrack.android.ui.theme.FtExpense)
+                    SummaryStat("Difference", formatMoney(diff, currency), androidx.compose.ui.graphics.Color(0xFFF59E0B))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SummaryStat(label: String, value: String, color: androidx.compose.ui.graphics.Color) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(value, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = color)
+    }
+}
+
 /**
  * Accounts stays always visible per the design brief; date/category/tags live in a collapsible
  * section beneath it so the common case (just switch account) doesn't need an extra tap.
@@ -164,31 +201,15 @@ private fun TransactionFiltersPanel(
     var showFromPicker by remember { mutableStateOf(false) }
     var showToPicker by remember { mutableStateOf(false) }
 
-    ElevatedCard(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
-        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedTextField(
-                value = filters.description ?: "",
-                onValueChange = { onFiltersChange(filters.copy(description = it.ifBlank { null })) },
-                label = { Text("Search description") },
-                singleLine = true,
-                leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
-                trailingIcon = {
-                    if (!filters.description.isNullOrEmpty()) {
-                        IconButton(onClick = { onFiltersChange(filters.copy(description = null)) }) {
-                            Icon(Icons.Filled.Close, contentDescription = "Clear search")
-                        }
-                    }
-                },
-                modifier = Modifier.fillMaxWidth()
-            )
-
+    ElevatedCard(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
+        Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                 Box(modifier = Modifier.weight(1f)) {
                     AccountFuzzyComboField(
                         query = accountQuery,
                         onQueryChange = { accountQuery = it; if (it.isBlank()) onFiltersChange(filters.copy(accountId = null)) },
                         accounts = accounts,
-                        label = "Account (all)",
+                        label = "Account (all if empty)",
                         onSelected = { id -> onFiltersChange(filters.copy(accountId = id)) }
                     )
                 }
@@ -210,11 +231,24 @@ private fun TransactionFiltersPanel(
                     },
                     modifier = Modifier.align(Alignment.End)
                 ) { Text("Clear all filters") }
-            }
 
-            if (expanded) {
                 HorizontalDivider()
-                Text("More filters", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+
+                OutlinedTextField(
+                    value = filters.description ?: "",
+                    onValueChange = { onFiltersChange(filters.copy(description = it.ifBlank { null })) },
+                    label = { Text("Search description") },
+                    singleLine = true,
+                    leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+                    trailingIcon = {
+                        if (!filters.description.isNullOrEmpty()) {
+                            IconButton(onClick = { onFiltersChange(filters.copy(description = null)) }) {
+                                Icon(Icons.Filled.Close, contentDescription = "Clear search")
+                            }
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                )
 
                 var categoryQuery by remember(filters.category) { mutableStateOf(filters.category ?: "") }
                 FuzzyComboField(
@@ -225,14 +259,22 @@ private fun TransactionFiltersPanel(
                 )
 
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                    OutlinedTextField(
-                        value = filters.dateFrom ?: "", onValueChange = {}, readOnly = true, label = { Text("From") },
-                        modifier = Modifier.weight(1f).clickable { showFromPicker = true }
-                    )
-                    OutlinedTextField(
-                        value = filters.dateTo ?: "", onValueChange = {}, readOnly = true, label = { Text("To") },
-                        modifier = Modifier.weight(1f).clickable { showToPicker = true }
-                    )
+                    Box(modifier = Modifier.weight(1f)) {
+                        OutlinedTextField(
+                            value = filters.dateFrom ?: "", onValueChange = {}, readOnly = true, label = { Text("From") },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        // Transparent tap-catcher on top: a readOnly field's own touch handling can
+                        // otherwise swallow the tap before Modifier.clickable ever sees it.
+                        Box(modifier = Modifier.matchParentSize().clickable { showFromPicker = true })
+                    }
+                    Box(modifier = Modifier.weight(1f)) {
+                        OutlinedTextField(
+                            value = filters.dateTo ?: "", onValueChange = {}, readOnly = true, label = { Text("To") },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Box(modifier = Modifier.matchParentSize().clickable { showToPicker = true })
+                    }
                 }
 
                 FuzzyTagPicker(

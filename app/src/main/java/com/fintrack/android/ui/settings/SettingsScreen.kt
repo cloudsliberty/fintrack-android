@@ -16,6 +16,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.fintrack.android.data.model.Currency
+import com.fintrack.android.data.security.BiometricAuthHelper
 import com.fintrack.android.data.security.PinLockManager
 import com.fintrack.android.ui.common.*
 
@@ -27,16 +28,16 @@ fun SettingsScreen(onLoggedOut: () -> Unit) {
     val actionMessage by viewModel.actionMessage.collectAsState()
     var showAddCurrency by remember { mutableStateOf(false) }
     var pendingDeleteCurrency by remember { mutableStateOf<Currency?>(null) }
-    var showLockSetup by remember { mutableStateOf(false) }
-    var showLockDisable by remember { mutableStateOf(false) }
     var pendingLogout by remember { mutableStateOf(false) }
 
-    // Local, on-device PIN lock (separate from the server-tracked "App Lock" above) — its state
-    // isn't a StateFlow, so we bump this counter to force a re-read after any change.
+    // Local, on-device PIN lock — its state isn't a StateFlow, so we bump this counter to force a
+    // re-read after any change.
     val context = androidx.compose.ui.platform.LocalContext.current
     var pinLockVersion by remember { mutableStateOf(0) }
     val pinEnabled = remember(pinLockVersion) { PinLockManager.isEnabled(context) }
     val pinTimeout = remember(pinLockVersion) { PinLockManager.timeoutMinutes(context) }
+    val biometricEnabled = remember(pinLockVersion) { PinLockManager.isBiometricEnabled(context) }
+    val biometricAvailable = remember { BiometricAuthHelper.isAvailable(context) }
     var showPinSetup by remember { mutableStateOf(false) }
     var showPinDisable by remember { mutableStateOf(false) }
 
@@ -81,19 +82,6 @@ fun SettingsScreen(onLoggedOut: () -> Unit) {
                             }
                         }
                         item {
-                            SectionCard("App Lock") {
-                                if (data.lockStatus.enabled) {
-                                    Text("Enabled — locks after ${data.lockStatus.timeoutMinutes} minutes idle.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                    Spacer(Modifier.height(8.dp))
-                                    OutlinedButton(onClick = { showLockDisable = true }) { Text("Disable App Lock") }
-                                } else {
-                                    Text("Adds a PIN on top of your Nextcloud login for this device.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                    Spacer(Modifier.height(8.dp))
-                                    Button(onClick = { showLockSetup = true }) { Text("Enable App Lock") }
-                                }
-                            }
-                        }
-                        item {
                             SectionCard("PIN Lock") {
                                 if (pinEnabled) {
                                     Text(
@@ -104,6 +92,21 @@ fun SettingsScreen(onLoggedOut: () -> Unit) {
                                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                         OutlinedButton(onClick = { showPinSetup = true }) { Text("Change PIN") }
                                         OutlinedButton(onClick = { showPinDisable = true }) { Text("Disable") }
+                                    }
+                                    if (biometricAvailable) {
+                                        Spacer(Modifier.height(10.dp))
+                                        HorizontalDivider()
+                                        Spacer(Modifier.height(6.dp))
+                                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text("Fingerprint / face unlock", style = MaterialTheme.typography.bodyMedium)
+                                                Text("Use it as a shortcut instead of typing your PIN.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                            }
+                                            Switch(
+                                                checked = biometricEnabled,
+                                                onCheckedChange = { PinLockManager.setBiometricEnabled(context, it); pinLockVersion++ }
+                                            )
+                                        }
                                     }
                                 } else {
                                     Text(
@@ -132,16 +135,6 @@ fun SettingsScreen(onLoggedOut: () -> Unit) {
     }
     pendingDeleteCurrency?.let { currency ->
         ConfirmDialog(title = "Delete currency?", message = "\"${currency.code}\" will be removed.", onConfirm = { viewModel.deleteCurrency(currency.id) }, onDismiss = { pendingDeleteCurrency = null })
-    }
-    if (showLockSetup) {
-        LockSetupDialog(onDismiss = { showLockSetup = false }, onConfirm = { password, timeout ->
-            viewModel.setupLock(password, timeout); showLockSetup = false
-        })
-    }
-    if (showLockDisable) {
-        PasswordPromptDialog(title = "Disable App Lock", onDismiss = { showLockDisable = false }, onConfirm = { pw ->
-            viewModel.disableLock(pw); showLockDisable = false
-        })
     }
     if (showPinSetup) {
         PinSetupDialog(
@@ -214,38 +207,6 @@ private fun CurrencyEditorDialog(onDismiss: () -> Unit, onSave: (code: String, n
         confirmButton = {
             TextButton(enabled = code.length == 3 && rateText.toDoubleOrNull() != null, onClick = { onSave(code, name.trim(), symbol.trim(), rateText.toDoubleOrNull() ?: 1.0) }) { Text("Save") }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
-    )
-}
-
-@Composable
-private fun LockSetupDialog(onDismiss: () -> Unit, onConfirm: (password: String, timeoutMinutes: Int) -> Unit) {
-    var password by remember { mutableStateOf("") }
-    var timeoutText by remember { mutableStateOf("10") }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Enable App Lock") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                OutlinedTextField(value = password, onValueChange = { password = it }, label = { Text("PIN / passphrase") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(value = timeoutText, onValueChange = { timeoutText = it }, label = { Text("Lock after (minutes idle)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-            }
-        },
-        confirmButton = {
-            TextButton(enabled = password.length >= 4, onClick = { onConfirm(password, timeoutText.toIntOrNull() ?: 10) }) { Text("Enable") }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
-    )
-}
-
-@Composable
-private fun PasswordPromptDialog(title: String, onDismiss: () -> Unit, onConfirm: (String) -> Unit) {
-    var password by remember { mutableStateOf("") }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(title) },
-        text = { OutlinedTextField(value = password, onValueChange = { password = it }, label = { Text("Current PIN / passphrase") }, singleLine = true) },
-        confirmButton = { TextButton(enabled = password.isNotBlank(), onClick = { onConfirm(password) }) { Text("Confirm") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
     )
 }

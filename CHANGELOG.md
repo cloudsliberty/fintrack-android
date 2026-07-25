@@ -2,9 +2,118 @@
 
 All notable changes to FinTrack for Android are documented in this file.
 
+## [1.1.7]
+
+### Accounts
+- Added a **view toggle** (top-right of the search bar): **Detail** (the existing full card —
+  icon, name, type/currency, edit + delete) and **Compact tile** (3 across the screen width, no
+  edit/delete actions, just icon, name, currency code, and account type). Tapping either still
+  opens that account's transactions.
+
+### Loading Animation
+- Replaced the plain spinner everywhere the app shows a loading state with an animated version
+  of the FinTrack logo: five translucent bars pulsing at staggered intervals behind a bold white
+  "FT", with the F and T themselves gently pulsing too — a direct Compose recreation of the
+  supplied CSS keyframe animation (same timings: bars 1.8s staggered by 0.2s each, letters 1.4s,
+  T lagging 0.3s behind F).
+
+### Version
+- Bumped to **v1.1.7** (versionCode 9).
+
+---
+
+## [1.1.6]
+
+### Transactions
+- Date range (From/To) filter fields are now reliably tappable — same "transparent tap-catcher
+  overlay" fix already used elsewhere, since a plain `readOnly` field can silently swallow the
+  tap before it reaches an outer click handler.
+- Added an **Income / Expense / Difference** summary bar above the transaction list: green for
+  income, red for expense, orange for the difference. Computed per-currency so amounts are never
+  summed across currencies if the filtered set spans more than one.
+- Filter panel is more compact: only the **Account** field (label reverted to
+  *"Account (all if empty)"*) is visible by default; description search, category, date range,
+  and tags all moved into the collapsible "more filters" section, freeing up space for the actual
+  transaction list.
+- Pull down to refresh.
+
+### Accounts
+- Account icon/initial is now 2.5× larger.
+- Pull down to refresh.
+
+### Dashboard
+- Pull down to refresh.
+
+### Settings
+- Removed the old server-side **App Lock** section.
+- **PIN Lock** section can now also enable **fingerprint / face unlock** as a shortcut (device
+  must support it) — the PIN itself remains the fallback if biometrics fail or aren't set up.
+
+### PIN Unlock Screen
+- Now shows the FinTrack logo, app name, and version.
+- Prompts for fingerprint/face automatically on screen show when enabled, with the PIN field
+  always available underneath as a fallback.
+
+### Top Status Indicator
+- Replaced the text pill ("Data refreshing…", etc.) with icons: a spinner while a fetch is in
+  flight, a green cloud when the last refresh succeeded, a red cloud when offline/showing cached
+  data. A numeric badge still appears when writes are queued for sync; tapping it still opens the
+  pending-sync list.
+
+### Layout
+- Removed page titles from the four bottom-nav screens (Transactions, Accounts, Dashboard, More)
+  to reclaim vertical space — the bottom nav itself already indicates where you are.
+
+### App Icon
+- The "FT" glyph now fills ~85% of the icon (was noticeably small before), on both the legacy
+  launcher icon and the adaptive icon's foreground layer.
+
+### Version
+- Bumped to **v1.1.6** (versionCode 8). Compose BOM bumped to 2024.09.00 (needed for the stable
+  `PullToRefreshBox` API). Added `androidx.biometric` and `androidx.fragment` dependencies;
+  `MainActivity` now extends `FragmentActivity` instead of `ComponentActivity` (required by
+  `BiometricPrompt`, fully Compose-compatible).
+
+---
+
+## [1.1.5] — Crash Fix
+
+### Fixed: app crashed immediately when opening Accounts / Dashboard / More
+- **Cause:** `NavHost`'s `startDestination` was set to the plain `"transactions"` route, but the
+  Transactions destination is actually registered under the parameterized route
+  `"transactions?accountId={accountId}"` (added to support "tap an account → see its
+  transactions"). Those two strings don't match, so the graph's `startDestinationId` didn't
+  correspond to any real destination. Tapping any other bottom-nav tab ran
+  `navController.graph.findStartDestination()` — which found nothing and threw
+  `NoSuchElementException: Sequence is empty` — and crashed the app. Transactions itself never hit
+  this code path (you start there), which is why only the *other* tabs appeared broken.
+- **Fix:** `startDestination` now uses the exact same parameterized route string the destination
+  is registered under, and is computed once via `remember` instead of every recomposition. The
+  bottom-nav's `popUpTo(...)` also no longer depends on `graph.findStartDestination()` at all —
+  it pops to our own known start route directly, so this class of mismatch can't crash things
+  again even if routes change in the future.
+
+### Version
+- Bumped to **v1.1.5** (versionCode 7).
+
+---
+
 ## [1.1.4]
 
+*(No separate entry — version bump only, prior to this crash-fix build.)*
 
+---
+
+## [1.1.4]
+
+- **Reverted application ID / namespace** back to `com.fintrack.android` everywhere (undoes the
+  1.1.3 rename to `com.cloudsliberty.fintrack`) — `build.gradle.kts` `namespace`/`applicationId`,
+  and the `R`/`BuildConfig` imports in `CommonComponents.kt`, `AboutScreen.kt`, and `ApiClient.kt`
+  are all back in sync with the Kotlin source package.
+- **Repo links** updated: the Android app's own GitHub link (About screen, README) now points to
+  `github.com/cloudsliberty/fintrack-android`, and a separate link to the FinTrack **backend**
+  (Nextcloud app) repo, `github.com/cloudsliberty/fintrack`, was added alongside it so the two
+  projects aren't conflated.
 - **Accounts screen:** added a "Search accounts" box, and accounts are now grouped into
   collapsible sections (Asset / Expenses / Revenue / Liability / Inactive) instead of one flat
   list — each section header shows a count and can be expanded/collapsed; searching auto-expands
@@ -20,6 +129,35 @@ All notable changes to FinTrack for Android are documented in this file.
   Transactions" section (next 5 active recurring rules by due date) and kept/renamed the budgets
   section to "Budgets vs. Spending" for clarity.
 
+## [Release Configuration — same version, 1.1.3]
+
+⚠️ **Security note:** a keystore password was pasted in plaintext during this session while
+requesting these changes. It was **not** written into any file — treat it as compromised and
+generate a fresh one when you set up your real keystore.
+
+- **Application ID / namespace** changed to `com.cloudsliberty.fintrack` (was
+  `com.fintrack.android`) — this is what Google Play identifies the app by, and can never change
+  again after the first release. Kotlin source files keep their existing `com.fintrack.android.*`
+  package declarations (that's independent of the app/namespace ID and doesn't need to match); the
+  two spots that imported `R`/`BuildConfig` by name were updated to the new namespace.
+- **Release signing** added the safe way: credentials are read from a local `keystore.properties`
+  file (see `keystore.properties.example` for the template) or equivalent environment variables
+  (`FINTRACK_KEYSTORE_PATH`, `FINTRACK_KEYSTORE_PASSWORD`, `FINTRACK_KEY_ALIAS`,
+  `FINTRACK_KEY_PASSWORD`) — never hardcoded in `build.gradle.kts`. If `keystore.properties` isn't
+  present (e.g. a fresh checkout), the release build type simply skips custom signing instead of
+  failing the whole build.
+- Added `.gitignore` (was missing) covering `keystore.properties`, `*.jks`, `*.keystore`, and the
+  usual Gradle/Android build output — so signing secrets can't be committed by accident.
+- **Shrinking & optimization:** `isMinifyEnabled = true` and `isShrinkResources = true` for release
+  builds (was `false`/unset). Expanded `proguard-rules.pro` with keep rules for the Gson-serialized
+  model/sync classes, `TypeToken`-based generic deserialization, and the Retrofit API interfaces,
+  plus `-dontwarn` entries for optional OkHttp platform dependencies R8 otherwise flags.
+- **Debug logging:** audited the codebase — there were no `Log.d`/`Log.v`/`Log.i` calls to remove.
+  The one thing that *was* logging unconditionally, OkHttp's `HttpLoggingInterceptor`, is now
+  gated to debug builds only (`BuildConfig.DEBUG`); release builds log no network activity at all.
+
+
+---
 
 ## [1.1.3]
 
@@ -43,6 +181,8 @@ All notable changes to FinTrack for Android are documented in this file.
 - Includes a "Forgot PIN? Log out" escape hatch on the lock screen so no one gets permanently
   locked out of their own device.
 
+### Version
+- Bumped to **v1.1.3** (versionCode 5).
 
 ---
 
@@ -91,6 +231,11 @@ All notable changes to FinTrack for Android are documented in this file.
 - The top-right status pill now also shows **"N items pending sync"** when there's a queue.
   Tapping it opens a sheet listing what's waiting, with a manual **Sync now** action.
 
+### Settings & About
+- Replaced the single "Donate" button with two dedicated buttons:
+  - **PayPal** → `paypal.me/jaleel1618`
+  - **Ko-fi** → `ko-fi.com/jaleel1618` (with a card-payment icon accent)
+- About screen developer name updated to **Abdul Jaleel Adenpulan**.
 
 ### Version
 - Bumped to **v1.1.1** (versionCode 3).
@@ -99,6 +244,10 @@ All notable changes to FinTrack for Android are documented in this file.
 
 ## [1.1.0]
 
+### Branding
+- New app icon and in-app loading-screen logo: white "FT" on blue, matching the supplied
+  Nextcloud-style icon artwork. Generated for every mipmap density plus the adaptive-icon
+  foreground/background layers.
 
 ### Settings
 - Removed **Reset All Data** — no longer exposed in the UI.

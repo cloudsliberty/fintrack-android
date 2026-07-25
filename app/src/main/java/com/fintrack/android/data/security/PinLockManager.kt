@@ -20,6 +20,7 @@ object PinLockManager {
     private const val KEY_PIN_HASH = "pin_hash"
     private const val KEY_TIMEOUT_MINUTES = "timeout_minutes"
     private const val KEY_BACKGROUNDED_AT = "backgrounded_at"
+    private const val KEY_BIOMETRIC_ENABLED = "biometric_enabled"
     private const val SALT = "fintrack-pin-v1" // not secret; just avoids trivially-identical hashes across installs
 
     // Cold-start default: nothing has unlocked this process yet, so the gate always shows first
@@ -42,6 +43,13 @@ object PinLockManager {
     fun isEnabled(context: Context): Boolean = prefs(context).getBoolean(KEY_ENABLED, false)
 
     fun timeoutMinutes(context: Context): Int = prefs(context).getInt(KEY_TIMEOUT_MINUTES, 5)
+
+    /** Fingerprint/face is only ever offered as a shortcut alongside an already-configured PIN — never a standalone lock. */
+    fun isBiometricEnabled(context: Context): Boolean = isEnabled(context) && prefs(context).getBoolean(KEY_BIOMETRIC_ENABLED, false)
+
+    fun setBiometricEnabled(context: Context, enabled: Boolean) {
+        prefs(context).edit().putBoolean(KEY_BIOMETRIC_ENABLED, enabled).apply()
+    }
 
     /** Enables the lock (or updates the PIN/timeout of an already-enabled one). */
     fun setPin(context: Context, pin: String, timeoutMinutes: Int) {

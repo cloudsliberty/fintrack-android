@@ -26,8 +26,13 @@ fun DashboardScreen() {
     val viewModel: DashboardViewModel = viewModel()
     val state by viewModel.state.collectAsState()
 
-    Scaffold(topBar = { TopAppBar(title = { Text("Dashboard") }) }) { padding ->
-        Box(modifier = Modifier.padding(padding).fillMaxSize()) {
+    Scaffold { padding ->
+        val syncState by com.fintrack.android.data.SyncStatusManager.state.collectAsState()
+        androidx.compose.material3.pulltorefresh.PullToRefreshBox(
+            isRefreshing = syncState is com.fintrack.android.data.SyncState.Refreshing,
+            onRefresh = { viewModel.load() },
+            modifier = Modifier.padding(padding).fillMaxSize()
+        ) {
             when (val s = state) {
                 is UiState.Loading -> LoadingBox()
                 is UiState.Error -> ErrorBox(s.message, onRetry = viewModel::load)

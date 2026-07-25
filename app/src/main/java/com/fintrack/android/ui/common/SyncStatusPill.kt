@@ -1,18 +1,22 @@
 package com.fintrack.android.ui.common
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CloudDone
+import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -25,6 +29,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.fintrack.android.data.SyncState
@@ -35,9 +40,14 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+private val SyncGreen = Color(0xFF2E7D32)
+private val SyncRed = Color(0xFFD32F2F)
+
 /**
- * Small "connecting to server…" / "data refreshing…" / "offline — showing cached data" / "N pending"
- * pill. Tapping it (when there's something queued) opens a sheet listing what's waiting to sync.
+ * Icon-only sync status indicator, top-right: a green cloud when the last refresh succeeded, a
+ * red cloud when offline (showing cached data), or a small spinner while a fetch is in flight.
+ * A numeric badge appears on top when there are queued offline writes — tapping it (only when
+ * something's queued) opens a sheet listing what's waiting to sync.
  */
 @Composable
 fun SyncStatusPill(modifier: Modifier = Modifier) {
@@ -45,33 +55,28 @@ fun SyncStatusPill(modifier: Modifier = Modifier) {
     val state by SyncStatusManager.state.collectAsState()
     val pendingCount by SyncStatusManager.pendingCount.collectAsState()
     var showPendingSheet by remember { mutableStateOf(false) }
-
-    val label = when {
-        pendingCount > 0 && state !is SyncState.Refreshing && state !is SyncState.Connecting ->
-            if (pendingCount == 1) "1 item pending sync" else "$pendingCount items pending sync"
-        state is SyncState.Connecting -> "Connecting to server…"
-        state is SyncState.Refreshing -> "Data refreshing…"
-        state is SyncState.Offline -> (state as SyncState.Offline).message
-        else -> null
-    }
     val tappable = pendingCount > 0
 
-    AnimatedVisibility(visible = label != null, enter = fadeIn(), exit = fadeOut(), modifier = modifier) {
-        Surface(
-            shape = RoundedCornerShape(50),
-            color = MaterialTheme.colorScheme.surfaceVariant,
-            shadowElevation = 2.dp,
-            modifier = if (tappable) Modifier.clickable { showPendingSheet = true } else Modifier
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
-            ) {
-                if (state is SyncState.Refreshing || state is SyncState.Connecting) {
-                    CircularProgressIndicator(modifier = Modifier.size(12.dp), strokeWidth = 1.5.dp)
-                    Spacer(Modifier.size(6.dp))
+    Surface(
+        shape = CircleShape,
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        shadowElevation = 2.dp,
+        modifier = modifier.then(if (tappable) Modifier.clickable { showPendingSheet = true } else Modifier)
+    ) {
+        Box(modifier = Modifier.padding(7.dp), contentAlignment = Alignment.Center) {
+            BadgedBox(badge = {
+                if (pendingCount > 0) {
+                    Badge { Text(pendingCount.toString()) }
                 }
-                Text(label ?: "", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }) {
+                when (state) {
+                    is SyncState.Connecting, is SyncState.Refreshing ->
+                        CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                    is SyncState.Offline ->
+                        Icon(Icons.Filled.CloudOff, contentDescription = "Offline — showing cached data", tint = SyncRed, modifier = Modifier.size(20.dp))
+                    is SyncState.Idle ->
+                        Icon(Icons.Filled.CloudDone, contentDescription = "Up to date", tint = SyncGreen, modifier = Modifier.size(20.dp))
+                }
             }
         }
     }
@@ -89,7 +94,7 @@ fun SyncStatusPill(modifier: Modifier = Modifier) {
                     LazyColumn {
                         items(pending, key = { it.id }) { op ->
                             Row(modifier = Modifier.padding(vertical = 6.dp)) {
-                                androidx.compose.foundation.layout.Column {
+                                Column {
                                     Text(op.summary, style = MaterialTheme.typography.bodyMedium)
                                     Text(
                                         dateFormat.format(Date(op.createdAt)),

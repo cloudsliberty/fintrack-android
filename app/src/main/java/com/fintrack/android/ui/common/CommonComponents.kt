@@ -46,15 +46,7 @@ import java.util.Locale
 @Composable
 fun LoadingBox(modifier: Modifier = Modifier) {
     Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            androidx.compose.foundation.Image(
-                painter = painterResource(id = R.drawable.ft_logo),
-                contentDescription = "FinTrack",
-                contentScale = ContentScale.Fit,
-                modifier = Modifier.size(64.dp)
-            )
-            CircularProgressIndicator()
-        }
+        FinTrackLoadingAnimation(size = 120.dp)
     }
 }
 

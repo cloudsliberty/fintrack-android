@@ -25,8 +25,8 @@ android {
         applicationId = "com.fintrack.android"
         minSdk = 26
         targetSdk = 34
-        versionCode = 6
-        versionName = "1.1.4"
+        versionCode = 9
+        versionName = "1.1.7"
     }
 
     signingConfigs {
@@ -83,7 +83,7 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.4")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.4")
     implementation("androidx.activity:activity-compose:1.9.1")
-    implementation(platform("androidx.compose:compose-bom:2024.06.00"))
+    implementation(platform("androidx.compose:compose-bom:2024.09.00"))
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-graphics")
     implementation("androidx.compose.ui:ui-tooling-preview")
@@ -107,6 +107,10 @@ dependencies {
     // ── Encrypted local storage for the Nextcloud app password ──
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
     implementation("androidx.datastore:datastore-preferences:1.1.1")
+
+    // ── Fingerprint/face unlock (PIN Lock section in Settings) ──
+    implementation("androidx.biometric:biometric:1.1.0")
+    implementation("androidx.fragment:fragment-ktx:1.8.2")
 
     // ── Coil for account/category icon rendering (emoji-only today, image-ready) ──
     implementation("io.coil-kt:coil-compose:2.6.0")
